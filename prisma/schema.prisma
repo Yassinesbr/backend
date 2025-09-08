@@ -1,0 +1,205 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  teacher
+  student
+}
+
+enum InvoiceStatus {
+  DUE
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum ItemStatus {
+  DUE
+  PAID
+  WAIVED
+}
+
+enum ClassPricingMode {
+  PER_STUDENT
+  FIXED_TOTAL
+}
+
+model User {
+  id        String  @id @default(uuid())
+  email     String  @unique
+  password  String
+  role      String
+  firstName String?
+  lastName  String?
+
+  student   Student?
+  teacher   Teacher?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  classes   Class[]
+}
+
+model Student {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id])
+  userId String @unique
+
+  birthDate      DateTime?
+  address        String?
+  phone          String?
+  parentName     String?
+  parentPhone    String?
+  enrollmentDate DateTime  @default(now())
+  paymentStatus  String?
+
+  classes Class[] @relation("ClassStudents")
+
+  // Billing
+  invoices Invoice[]
+
+  classPriceOverrides StudentClassPriceOverride[] // back-relation
+}
+
+model Teacher {
+  id     String @id @default(uuid())
+  user   User   @relation(fields: [userId], references: [id])
+  userId String @unique
+
+  birthDate  DateTime?
+  address    String?
+  phone      String?
+  hiringDate DateTime  @default(now())
+  subject    String?
+  salary     Float?
+
+  classes Class[] @relation("TeacherClasses")
+}
+
+model Class {
+  id          String      @id @default(uuid())
+  name        String
+  description String?
+  teacher     Teacher     @relation("TeacherClasses", fields: [teacherId], references: [id])
+  teacherId   String
+  students    Student[]   @relation("ClassStudents")
+  startAt     DateTime?
+  endAt       DateTime?
+  createdAt   DateTime    @default(now())
+  classTimes  ClassTime[]
+
+  User   User?   @relation(fields: [userId], references: [id])
+  userId String?
+
+  monthlyPriceCents           Int?
+  // New pricing fields
+  pricingMode                 ClassPricingMode @default(PER_STUDENT)
+  fixedMonthlyPriceCents      Int?
+  // Optional fixed teacher pay per month for this class
+  teacherFixedMonthlyPayCents Int?
+
+  // back-relation for per-student overrides
+  studentPriceOverrides StudentClassPriceOverride[]
+
+  // Billing
+  invoiceItems InvoiceItem[]
+}
+
+model ClassTime {
+  id           String   @id @default(uuid())
+  class        Class    @relation(fields: [classId], references: [id])
+  classId      String
+  dayOfWeek    Int
+  startMinutes Int
+  endMinutes   Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([classId])
+  @@index([dayOfWeek])
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  number        String        @unique
+  studentId     String
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime
+  status        InvoiceStatus @default(DUE)
+  currency      String        @default("MAD")
+  subtotalCents Int           @default(0)
+  paidCents     Int           @default(0)
+  notes         String?
+
+  student  Student       @relation(fields: [studentId], references: [id])
+  items    InvoiceItem[]
+  payments Payment[]
+
+  @@index([studentId, status, issueDate])
+}
+
+model InvoiceItem {
+  id             String   @id @default(uuid())
+  invoiceId      String
+  classId        String
+  billedMonth    DateTime // first day of the billed month
+  description    String
+  quantity       Int      @default(1)
+  unitPriceCents Int
+  lineTotalCents Int
+
+  // NEW: per-item payment tracking
+  status    ItemStatus @default(DUE)
+  paidCents Int        @default(0)
+  paidAt    DateTime?
+
+  invoice     Invoice             @relation(fields: [invoiceId], references: [id])
+  class       Class               @relation(fields: [classId], references: [id])
+  allocations PaymentAllocation[]
+
+  @@unique([invoiceId, classId, billedMonth])
+  @@index([classId, billedMonth])
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  amountCents Int
+  method      String   @default("manual")
+  paidAt      DateTime @default(now())
+  reference   String?
+
+  invoice     Invoice             @relation(fields: [invoiceId], references: [id])
+  allocations PaymentAllocation[]
+}
+
+// NEW: PaymentAllocation ties a payment to a specific InvoiceItem
+model PaymentAllocation {
+  id            String @id @default(uuid())
+  paymentId     String
+  invoiceItemId String
+  amountCents   Int
+
+  payment Payment     @relation(fields: [paymentId], references: [id])
+  item    InvoiceItem @relation(fields: [invoiceItemId], references: [id])
+
+  @@index([invoiceItemId])
+}
+
+// Allows per-student price override for a specific class without changing the M2M relation
+model StudentClassPriceOverride {
+  studentId          String
+  classId            String
+  priceOverrideCents Int
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@id([studentId, classId])
+}
