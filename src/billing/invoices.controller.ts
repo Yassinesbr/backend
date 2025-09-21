@@ -25,8 +25,11 @@ export class InvoicesController {
   constructor(private readonly svc: InvoicesService) {}
 
   @Get()
-  list(@Query('studentId') studentId?: string) {
-    return this.svc.listInvoices({ studentId });
+  list(
+    @Query('studentId') studentId?: string,
+    @Query('month') month?: string, // YYYY-MM
+  ) {
+    return this.svc.listInvoices({ studentId, month });
   }
 
   @Get(':id')

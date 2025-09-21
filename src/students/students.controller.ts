@@ -26,8 +26,26 @@ export class StudentsController {
 
   @Get()
   @Roles('admin')
-  async findAll(@Query('search') search?: string): Promise<any> {
-    return await this.studentsService.findAll(search);
+  async findAll(
+    @Query('search') search?: string,
+    @Query('levelId') levelId?: string,
+    @Query('trackId') trackId?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('teacherId') teacherId?: string,
+  ): Promise<any> {
+    return await this.studentsService.findAll({
+      search,
+      levelId,
+      trackId,
+      subjectId,
+      teacherId,
+    });
+  }
+
+  @Get('filters/all')
+  @Roles('admin')
+  getFilters() {
+    return this.studentsService.getFilters();
   }
 
   @Get(':id')

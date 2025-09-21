@@ -48,4 +48,10 @@ export class TeachersController {
   update(@Param('id') id: string, @Body() body: any) {
     return this.teachersService.update(id, body);
   }
+
+  @Get(':id/classes')
+  @Roles('admin')
+  classes(@Param('id') id: string) {
+    return this.teachersService.listTeacherClasses(id);
+  }
 }

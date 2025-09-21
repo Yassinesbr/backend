@@ -76,34 +76,55 @@ export class StudentsService {
     return { ...updated, monthlyTotalCents };
   }
 
-  findAll(search?: string) {
+  findAll(params: {
+    search?: string;
+    levelId?: string;
+    trackId?: string;
+    subjectId?: string;
+    teacherId?: string;
+  }) {
+    const { search, levelId, trackId, subjectId, teacherId } = params || {};
+
+    const searchFilter = search
+      ? {
+          OR: [
+            { user: { firstName: { contains: search, mode: 'insensitive' } } },
+            { user: { lastName: { contains: search, mode: 'insensitive' } } },
+            { user: { email: { contains: search, mode: 'insensitive' } } },
+          ],
+        }
+      : undefined;
+
+    // Build class-related hierarchical filter
+    const classFilter: any = {};
+    if (teacherId) classFilter.teacherId = teacherId;
+    if (subjectId) classFilter.subjectId = subjectId;
+    if (trackId)
+      classFilter.subject = { ...(classFilter.subject || {}), trackId };
+    if (levelId)
+      classFilter.subject = {
+        ...(classFilter.subject || {}),
+        track: { ...(classFilter.subject?.track || {}), levelId },
+      };
+
+    const where = {
+      AND: [
+        searchFilter,
+        Object.keys(classFilter).length
+          ? { classes: { some: classFilter } }
+          : undefined,
+      ].filter(Boolean) as any,
+    };
+
     return this.prisma.student
       .findMany({
-        where: search
-          ? {
-              OR: [
-                {
-                  user: {
-                    firstName: { contains: search, mode: 'insensitive' },
-                  },
-                },
-                {
-                  user: {
-                    lastName: { contains: search, mode: 'insensitive' },
-                  },
-                },
-                {
-                  user: {
-                    email: { contains: search, mode: 'insensitive' },
-                  },
-                },
-              ],
-            }
-          : undefined,
+        where,
         include: {
           user: true,
           classes: {
-            select: { id: true, name: true, monthlyPriceCents: true },
+            include: {
+              subject: { include: { track: { include: { level: true } } } },
+            },
           },
         },
       })
@@ -253,5 +274,35 @@ export class StudentsService {
     // Refresh upcoming invoice for accuracy
     await this.invoices.ensureUpcomingInvoiceForStudent(studentId);
     return { ok: true };
+  }
+
+  async getFilters() {
+    // Hierarchy
+    const levels = await (this.prisma as any).level.findMany({
+      include: { tracks: { include: { subjects: true } } },
+      orderBy: { name: 'asc' },
+    });
+    // Teachers (lightweight)
+    const teachers = await this.prisma.teacher.findMany({
+      include: { user: true },
+      orderBy: { user: { firstName: 'asc' } },
+    });
+    return {
+      levels: levels.map((l: any) => ({
+        id: l.id,
+        name: l.name,
+        tracks: l.tracks.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          subjects: t.subjects.map((s: any) => ({ id: s.id, name: s.name })),
+        })),
+      })),
+      teachers: teachers.map((t) => ({
+        id: t.id,
+        name:
+          `${t.user?.firstName ?? ''} ${t.user?.lastName ?? ''}`.trim() ||
+          t.user?.email,
+      })),
+    };
   }
 }

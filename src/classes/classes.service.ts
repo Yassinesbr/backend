@@ -14,23 +14,26 @@ export class ClassesService {
   ) {}
 
   async findAll() {
-    return this.prisma.class.findMany({
+    // Cast to any to avoid type errors before running `prisma generate`
+    return (this.prisma as any).class.findMany({
       include: {
         teacher: { include: { user: true } },
         students: { include: { user: true } },
         classTimes: true,
+        subject: { include: { track: { include: { level: true } } } },
       },
       orderBy: { startAt: 'asc' },
     });
   }
 
   async findOne(id: string) {
-    const klass = await this.prisma.class.findUnique({
+    const klass = await (this.prisma as any).class.findUnique({
       where: { id },
       include: {
         teacher: { include: { user: true } },
         students: { include: { user: true } },
         classTimes: true,
+        subject: { include: { track: { include: { level: true } } } },
       },
     });
     if (!klass) throw new NotFoundException('Class not found');
@@ -50,12 +53,31 @@ export class ClassesService {
       where: { id: data.teacherId },
     });
     if (!teacher) throw new NotFoundException('Teacher not found');
+    let name = data.name;
+    if (data.subjectId) {
+      const subject = await (this.prisma as any).subject.findUnique({
+        where: { id: data.subjectId },
+        include: { track: { include: { level: true } } },
+      });
+      if (!subject) throw new NotFoundException('Subject not found');
+      if (!name) {
+        name = [
+          subject.track.level.name,
+          subject.track.name,
+          subject.name,
+          data.customSuffix,
+        ]
+          .filter(Boolean)
+          .join(' ');
+      }
+    }
 
-    return this.prisma.class.create({
-      data: { ...data },
+    return (this.prisma as any).class.create({
+      data: { ...data, name, subjectId: data.subjectId ?? null },
       include: {
         teacher: { include: { user: true } },
         students: { include: { user: true } },
+        subject: { include: { track: { include: { level: true } } } },
       },
     });
   }
@@ -104,16 +126,30 @@ export class ClassesService {
   }
 
   async update(id: string, data: UpdateClassDto) {
-    const existing = await this.prisma.class.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Class not found');
-
-    return this.prisma.class.update({
+    const existing = await (this.prisma as any).class.findUnique({
       where: { id },
-      data: { ...data },
+    });
+    if (!existing) throw new NotFoundException('Class not found');
+    let name = data.name;
+    if (data.subjectId && !name) {
+      const subject = await (this.prisma as any).subject.findUnique({
+        where: { id: data.subjectId },
+        include: { track: { include: { level: true } } },
+      });
+      if (!subject) throw new NotFoundException('Subject not found');
+      name = [subject.track.level.name, subject.track.name, subject.name]
+        .filter(Boolean)
+        .join(' ');
+    }
+
+    return (this.prisma as any).class.update({
+      where: { id },
+      data: { ...data, name: name ?? existing.name },
       include: {
         teacher: { include: { user: true } },
         students: { include: { user: true } },
         classTimes: true,
+        subject: { include: { track: { include: { level: true } } } },
       },
     });
   }
@@ -202,5 +238,78 @@ export class ClassesService {
       where: { id: classId },
     });
     if (!klass) throw new NotFoundException('Class not found');
+  }
+
+  // -------- Academic hierarchy --------
+  async createLevel(data: { name: string }) {
+    return (this.prisma as any).level.create({ data });
+  }
+
+  async listLevels() {
+    return (this.prisma as any).level.findMany({
+      include: {
+        tracks: { include: { subjects: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async createTrack(data: { levelId: string; name: string }) {
+    // ensure level exists
+    await this.ensureLevel(data.levelId);
+    return (this.prisma as any).track.create({ data });
+  }
+
+  async createSubject(data: { trackId: string; name: string }) {
+    await this.ensureTrack(data.trackId);
+    return (this.prisma as any).subject.create({ data });
+  }
+
+  async deleteSubject(id: string) {
+    // disallow if any classes reference it
+    const classCount = await (this.prisma as any).class.count({
+      where: { subjectId: id },
+    });
+    if (classCount > 0)
+      throw new NotFoundException(
+        'Cannot delete subject with existing classes',
+      );
+    return (this.prisma as any).subject.delete({ where: { id } });
+  }
+
+  async deleteTrack(id: string) {
+    // disallow if any subject under it has classes
+    const classCount = await (this.prisma as any).class.count({
+      where: { subject: { trackId: id } },
+    });
+    if (classCount > 0)
+      throw new NotFoundException(
+        'Cannot delete track with classes under its subjects',
+      );
+    return (this.prisma as any).track.delete({ where: { id } });
+  }
+
+  async deleteLevel(id: string) {
+    // disallow if any class references a subject under this level
+    const classCount = await (this.prisma as any).class.count({
+      where: { subject: { track: { levelId: id } } },
+    });
+    if (classCount > 0)
+      throw new NotFoundException('Cannot delete level with classes under it');
+    return (this.prisma as any).level.delete({ where: { id } });
+  }
+
+  private async ensureLevel(id: string) {
+    const level = await (this.prisma as any).level.findUnique({
+      where: { id },
+    });
+    if (!level) throw new NotFoundException('Level not found');
+  }
+
+  private async ensureTrack(id: string) {
+    const track = await (this.prisma as any).track.findUnique({
+      where: { id },
+    });
+    if (!track) throw new NotFoundException('Track not found');
   }
 }

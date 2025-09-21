@@ -134,4 +134,109 @@ export class TeachersService {
 
     return updated;
   }
+
+  async listTeacherClasses(teacherId: string) {
+    const teacher = await this.prisma.teacher.findUnique({
+      where: { id: teacherId },
+    });
+    if (!teacher) throw new NotFoundException('Teacher not found');
+    // TODO: replace temporary interfaces with generated Prisma types after running prisma generate
+    interface RawCls {
+      id: string;
+      name: string;
+      pricingMode: string;
+      monthlyPriceCents?: number;
+      fixedMonthlyPriceCents?: number;
+      teacherFixedMonthlyPayCents?: number;
+      students: {
+        id: string;
+        user?: { firstName?: string; lastName?: string; email?: string };
+      }[];
+      subject?: {
+        name: string;
+        track?: { name: string; level?: { name: string } };
+      };
+      classTimes?: {
+        id: string;
+        dayOfWeek: number;
+        startMinutes: number;
+        endMinutes: number;
+      }[];
+      studentPriceOverrides: {
+        studentId: string;
+        classId: string;
+        priceOverrideCents: number;
+      }[];
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawClasses: RawCls[] = await (this.prisma as any).class.findMany({
+      where: { teacherId },
+      include: {
+        students: { include: { user: true } },
+        subject: { include: { track: { include: { level: true } } } },
+        classTimes: true,
+        studentPriceOverrides: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const classes = rawClasses.map((c: RawCls) => {
+      const levelName = c.subject?.track?.level?.name || 'Uncategorized';
+      const studentCount = c.students.length;
+      const overridesCount = c.studentPriceOverrides.length;
+      const baseRevenue =
+        c.pricingMode === 'FIXED_TOTAL'
+          ? (c.fixedMonthlyPriceCents ?? 0)
+          : (c.monthlyPriceCents ?? 0) * studentCount;
+      const effectivePricePerStudent =
+        c.pricingMode === 'FIXED_TOTAL'
+          ? (c.fixedMonthlyPriceCents ?? 0) // currently invoiced fully per student
+          : (c.monthlyPriceCents ?? 0);
+      return {
+        id: c.id,
+        name: c.name,
+        subject: c.subject?.name,
+        track: c.subject?.track?.name,
+        level: levelName,
+        studentCount,
+        pricingMode: c.pricingMode,
+        monthlyPriceCents: c.monthlyPriceCents,
+        fixedMonthlyPriceCents: c.fixedMonthlyPriceCents,
+        teacherFixedMonthlyPayCents: c.teacherFixedMonthlyPayCents,
+        overridesCount,
+        totalMonthlyRevenueCents: baseRevenue,
+        effectivePricePerStudentCents: effectivePricePerStudent,
+        classTimes: c.classTimes?.map(
+          (t: {
+            id: string;
+            dayOfWeek: number;
+            startMinutes: number;
+            endMinutes: number;
+          }) => ({
+            id: t.id,
+            dayOfWeek: t.dayOfWeek,
+            startMinutes: t.startMinutes,
+            endMinutes: t.endMinutes,
+          }),
+        ),
+        students: c.students.map(
+          (s: {
+            id: string;
+            user?: { firstName?: string; lastName?: string; email?: string };
+          }) => ({
+            id: s.id,
+            firstName: s.user?.firstName,
+            lastName: s.user?.lastName,
+            email: s.user?.email,
+          }),
+        ),
+      };
+    });
+
+    const byLevel = classes.reduce<Record<string, typeof classes>>((acc, c) => {
+      (acc[c.level] ||= []).push(c);
+      return acc;
+    }, {});
+    return { classes, byLevel };
+  }
 }

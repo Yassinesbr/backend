@@ -18,6 +18,9 @@ import { AddTeacherDto } from './dto/add-teacher.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { CreateClassTimeDto } from './dto/create-class-time.dto';
 import { UpdateClassTimeDto } from './dto/update-class-time.dto';
+import { CreateLevelDto } from './dto/create-level.dto';
+import { CreateTrackDto } from './dto/create-track.dto';
+import { CreateSubjectDto } from './dto/create-subject.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('classes')
@@ -34,6 +37,49 @@ export class ClassesController {
   @Roles('admin')
   create(@Body() body: CreateClassDto) {
     return this.classesService.create(body);
+  }
+
+  // ---- hierarchy ----
+  @Post('levels')
+  @Roles('admin')
+  createLevel(@Body() body: CreateLevelDto) {
+    return this.classesService.createLevel(body);
+  }
+
+  @Get('levels')
+  @Roles('admin')
+  listLevels() {
+    return this.classesService.listLevels();
+  }
+
+  @Post('tracks')
+  @Roles('admin')
+  createTrack(@Body() body: CreateTrackDto) {
+    return this.classesService.createTrack(body);
+  }
+
+  @Post('subjects')
+  @Roles('admin')
+  createSubject(@Body() body: CreateSubjectDto) {
+    return this.classesService.createSubject(body);
+  }
+
+  @Delete('levels/:id')
+  @Roles('admin')
+  deleteLevel(@Param('id') id: string) {
+    return this.classesService.deleteLevel(id);
+  }
+
+  @Delete('tracks/:id')
+  @Roles('admin')
+  deleteTrack(@Param('id') id: string) {
+    return this.classesService.deleteTrack(id);
+  }
+
+  @Delete('subjects/:id')
+  @Roles('admin')
+  deleteSubject(@Param('id') id: string) {
+    return this.classesService.deleteSubject(id);
   }
 
   @Post(':id/add-student')
@@ -95,7 +141,7 @@ export class ClassesController {
     return this.classesService.removeTime(id, timeId);
   }
 
-  @Post('classes/:classId/pricing')
+  @Post(':classId/pricing')
   async updateClassPricing(
     @Param('classId') classId: string,
     @Body()

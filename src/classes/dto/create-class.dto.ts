@@ -3,7 +3,6 @@ import {
   IsOptional,
   IsString,
   IsDateString,
-  isInt,
   Min,
   IsInt,
   IsEnum,
@@ -12,9 +11,9 @@ import { Transform } from 'class-transformer';
 import { ClassPricingMode } from '@prisma/client';
 
 export class CreateClassDto {
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  name: string;
+  name?: string; // can be auto-generated from subject hierarchy
 
   @IsOptional()
   @IsString()
@@ -54,4 +53,12 @@ export class CreateClassDto {
   @IsInt()
   @IsOptional()
   teacherFixedMonthlyPayCents?: number;
+
+  @IsOptional()
+  @IsString()
+  subjectId?: string; // new hierarchical subject reference
+
+  @IsOptional()
+  @IsString()
+  customSuffix?: string; // used when auto-generating name
 }

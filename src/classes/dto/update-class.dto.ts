@@ -37,4 +37,8 @@ export class UpdateClassDto {
   @IsInt()
   @IsOptional()
   teacherFixedMonthlyPayCents?: number;
+
+  @IsOptional()
+  @IsString()
+  subjectId?: string;
 }

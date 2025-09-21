@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma.service';
 import { PdfService } from './pdf.service';
-import { InvoiceStatus } from '@prisma/client';
+import { InvoiceStatus, Prisma } from '@prisma/client';
 
 function monthRange(month?: string) {
   const now = new Date();
@@ -48,9 +48,28 @@ export class InvoicesService {
     });
   }
 
-  async listInvoices({ studentId }: { studentId?: string }) {
+  async listInvoices({
+    studentId,
+    month,
+  }: {
+    studentId?: string;
+    month?: string;
+  }) {
+    let monthClause: Prisma.InvoiceWhereInput | undefined;
+    if (month) {
+      const { start, end } = monthRange(month);
+      monthClause = {
+        items: { some: { billedMonth: { gte: start, lt: end } } },
+      };
+    }
+
+    const where: Prisma.InvoiceWhereInput = {
+      studentId: studentId || undefined,
+      ...(monthClause || {}),
+    };
+
     return this.prisma.invoice.findMany({
-      where: { studentId: studentId || undefined },
+      where,
       orderBy: { issueDate: 'desc' },
       include: {
         student: { include: { user: true } },
@@ -74,7 +93,7 @@ export class InvoicesService {
   }
 
   async generateMonthlyInvoices(month: string) {
-    const { start, end } = monthRange(month);
+    const { start } = monthRange(month);
     const dueDate = new Date(start);
     dueDate.setUTCDate(dueDate.getUTCDate() + 10);
 
@@ -82,7 +101,8 @@ export class InvoicesService {
       include: { classes: true },
     });
 
-    const results: any[] = [];
+    const results: { studentId: string; number: string; skipped?: boolean }[] =
+      [];
 
     for (const s of students) {
       if (!s.classes.length) {
