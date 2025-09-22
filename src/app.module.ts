@@ -8,6 +8,7 @@ import { ConfigModule } from '@nestjs/config';
 import { TeachersModule } from './teachers/teachers.module';
 import { ClassesModule } from './classes/classes.module';
 import { BillingModule } from './billing/billing.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { BillingModule } from './billing/billing.module';
     TeachersModule,
     ClassesModule,
     BillingModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],
